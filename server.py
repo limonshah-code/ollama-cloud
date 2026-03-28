@@ -59,9 +59,10 @@ queues: Dict[str, List[asyncio.Queue]] = {}
 def get_ollama_client():
     if not OLLAMA_API_KEY:
         raise ValueError("OLLAMA_API_KEY is not defined in environment variables.")
-    # The client automatically uses OLLAMA_API_KEY if set in env, 
-    # but we can also pass it explicitly if needed by some proxies.
-    return AsyncClient(host="https://ollama.com", headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"})
+    return AsyncClient(
+        host="https://ollama.com", 
+        headers={'Authorization': 'Bearer ' + OLLAMA_API_KEY}
+    )
 
 async def notify_clients(file_id: str, data: Dict[str, Any]):
     if file_id in queues:
@@ -112,9 +113,9 @@ async def process_file_task(file_id: str, file_url: str, config: Dict[str, Any])
         update_job(job_id, {"progress": 10, "message": "Fetching prompt from source..."})
         print(f"[{job_id}] Fetching prompt from: {file_url}")
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
-                response = await client.get(file_url, timeout=30.0)
+                response = await client.get(file_url)
                 response.raise_for_status()
                 prompt_text = response.text
             except Exception as e:
@@ -123,23 +124,24 @@ async def process_file_task(file_id: str, file_url: str, config: Dict[str, Any])
         # 2. Generate content with Ollama Cloud
         update_job(job_id, {"progress": 30, "message": "Generating content with Ollama Cloud..."})
         
-        selected_model = config.get('model') or select_model(prompt_text)
+        model = config.get('model') or select_model(prompt_text)
         client = get_ollama_client()
         
         generated_content = ""
         try:
-            # Note: We use the generate method directly if it's text-to-text
-            # Use stream=True if you want to stream progress internally, but here we just collect it.
-            response = await client.generate(
-                model=selected_model,
-                prompt=prompt_text,
+            # Shift from generate to chat for doc parity
+            messages = [{'role': 'user', 'content': prompt_text}]
+            response = await client.chat(
+                model=model,
+                messages=messages,
                 options={"num_predict": 4096}
             )
-            generated_content = response.get('response', '')
+            # Response in chat is structured as ['message']['content']
+            generated_content = response.get('message', {}).get('content', '')
             if not generated_content:
                 raise Exception("Ollama Cloud returned empty content")
         except Exception as e:
-            raise Exception(f"Ollama Cloud generation failed: {str(e)}")
+            raise Exception(f"Ollama Cloud chat failed: {str(e)}")
 
         # 3. Upload to Cloudinary
         update_job(job_id, {"progress": 70, "message": "Uploading to Cloudinary..."})

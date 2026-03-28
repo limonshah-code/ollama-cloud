@@ -35,7 +35,10 @@ OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
 def get_ollama_client():
     if not OLLAMA_API_KEY:
         raise ValueError("OLLAMA_API_KEY is not defined.")
-    return AsyncClient(host="https://ollama.com", headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"})
+    return AsyncClient(
+        host="https://ollama.com", 
+        headers={'Authorization': 'Bearer ' + OLLAMA_API_KEY}
+    )
 
 def select_model(prompt: str) -> str:
     return "minimax-m2.7:cloud"
@@ -130,12 +133,15 @@ async def process_file(file: Dict[str, Any], client: AsyncClient, current: int, 
         while attempt < MAX_RETRIES:
             try:
                 print(f"⌛ Generating content... (Attempt {attempt + 1})")
-                response = await client.generate(
+                # Shift from generate to chat for doc parity
+                messages = [{'role': 'user', 'content': prompt_text}]
+                response = await client.chat(
                     model=model,
-                    prompt=prompt_text,
+                    messages=messages,
                     options={"num_predict": 4096}
                 )
-                generated_content = response.get('response', '')
+                # Response in chat is structured as ['message']['content']
+                generated_content = response.get('message', {}).get('content', '')
                 if generated_content:
                     break
                 raise Exception("Empty response")
