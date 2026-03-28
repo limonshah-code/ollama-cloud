@@ -6,6 +6,7 @@ import json
 import base64
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import traceback
 
 import httpx
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
@@ -215,9 +216,9 @@ async def root():
 @app.get("/api/health")
 async def health():
     status = {"status": "online", "timestamp": datetime.now().isoformat()}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
-            resp = await client.get(EXTERNAL_API_BASE, timeout=5.0)
+            resp = await client.get(EXTERNAL_API_BASE)
             status["externalApi"] = "online" if resp.status_code == 200 else "offline"
         except:
             status["externalApi"] = "offline"
@@ -237,7 +238,7 @@ async def stats():
 
 @app.get("/api/proxy/files")
 async def proxy_files():
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             resp = await client.get(EXTERNAL_API_URL)
             return resp.json()
@@ -298,7 +299,7 @@ async def automation_loop():
     print("[Automation] Starting automation loop...")
     while True:
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.get(EXTERNAL_API_URL)
                 files = resp.json()
                 pending_files = [f for f in files if f.get('status') == 'Pending']
@@ -321,6 +322,7 @@ async def automation_loop():
                     
         except Exception as e:
             print(f"[Automation] Error in loop: {str(e)}")
+            traceback.print_exc()
             
         await asyncio.sleep(60) # Poll every 60 seconds
 

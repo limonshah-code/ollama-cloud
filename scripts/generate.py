@@ -2,7 +2,6 @@ import os
 import asyncio
 import json
 import time
-import path
 import base64
 from datetime import datetime
 from typing import List, Dict, Any
@@ -171,7 +170,7 @@ async def run():
     print('🚀 Starting Ollama Cloud Batch Processing...')
     
     try:
-        async with httpx.AsyncClient() as http_client:
+        async with httpx.AsyncClient(timeout=60.0) as http_client:
             resp = await http_client.get(f"{EXTERNAL_API_BASE}/api/all-files?section=General")
             files = resp.json()
             pending_files = [f for f in files if f.get('status') == 'Pending'][:BATCH_SIZE]
