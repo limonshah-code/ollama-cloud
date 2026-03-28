@@ -22,8 +22,8 @@ EXTERNAL_API_BASE = os.getenv('EXTERNAL_API_BASE', 'https://cloud-text-manager-s
 EXTERNAL_API_URL = f"{EXTERNAL_API_BASE}/api/all-files"
 GENERATED_DIR = os.path.join(os.getcwd(), 'generated-content')
 
-BATCH_SIZE = 15
-CONCURRENCY_LIMIT = 3 # Increased slightly for performance
+BATCH_SIZE = int(os.getenv('BATCH_SIZE', 10))
+CONCURRENCY_LIMIT = int(os.getenv('CONCURRENCY_LIMIT', 3))
 REQUEST_DELAY = 1.0 # Seconds
 MAX_RETRIES = 5
 
@@ -112,24 +112,29 @@ def generate_safe_filename(original_filename: str) -> str:
     return f"{safe}.mdx"
 
 # ================= FILE PROCESS =================
-async def process_file(file: Dict[str, Any], client: AsyncClient):
+async def process_file(file: Dict[str, Any], client: AsyncClient, current: int, total: int):
     filename = file.get('originalFilename', 'unknown')
     file_id = file.get('_id') or file.get('id')
-    print(f"Processing: {filename}")
+    start_time = time.time()
+    
+    print(f"\n{'='*20} [{current}/{total}] {'='*20}")
+    print(f"📄 Processing: {filename}")
 
     try:
-        async with httpx.AsyncClient() as http_client:
-            resp = await http_client.get(file['secureUrl'], timeout=30.0)
+        async with httpx.AsyncClient(timeout=60.0) as http_client:
+            resp = await http_client.get(file['secureUrl'])
             resp.raise_for_status()
             prompt_text = resp.text
 
         model = select_model(prompt_text)
+        print(f"🤖 Selected Model: {model}")
         
         # Generation with retry logic
         attempt = 0
         generated_content = ""
         while attempt < MAX_RETRIES:
             try:
+                print(f"⌛ Generating content... (Attempt {attempt + 1})")
                 response = await client.generate(
                     model=model,
                     prompt=prompt_text,
@@ -143,6 +148,7 @@ async def process_file(file: Dict[str, Any], client: AsyncClient):
                 attempt += 1
                 if attempt >= MAX_RETRIES:
                     raise e
+                print(f"⚠️ Retry {attempt}/{MAX_RETRIES} due to error: {str(e)}")
                 await asyncio.sleep(2 ** attempt)
 
         # Save locally
@@ -152,13 +158,15 @@ async def process_file(file: Dict[str, Any], client: AsyncClient):
             f.write(generated_content)
 
         # Update external API
-        async with httpx.AsyncClient() as http_client:
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
             await http_client.put(f"{EXTERNAL_API_URL}/{file_id}", json={
                 "status": "AlreadyCopy",
                 "completedTimestamp": int(time.time() * 1000)
             })
 
-        print(f"✅ Done: {safe_name}")
+        duration = time.time() - start_time
+        print(f"✨ Content Preview: {generated_content[:150]}...")
+        print(f"✅ Done: {safe_name} ({duration:.2f}s)")
         return {"success": True, "name": safe_name}
 
     except Exception as e:
@@ -185,12 +193,13 @@ async def run():
         
         # Simple semaphore for concurrency control
         sem = asyncio.Semaphore(CONCURRENCY_LIMIT)
+        total_files = len(pending_files)
         
-        async def sem_worker(file):
+        async def sem_worker(file, index):
             async with sem:
-                return await process_file(file, client)
+                return await process_file(file, client, index + 1, total_files)
         
-        tasks = [sem_worker(f) for f in pending_files]
+        tasks = [sem_worker(f, i) for i, f in enumerate(pending_files)]
         results = await asyncio.gather(*tasks)
 
         success = [r for r in results if r['success']]
