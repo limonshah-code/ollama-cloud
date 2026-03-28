@@ -41,7 +41,7 @@ def get_ollama_client():
     )
 
 def select_model(prompt: str) -> str:
-    return "minimax-m2.7:cloud"
+    return "gemini-3-flash-preview:cloud"
 
 # ================= EMAIL =================
 def send_email(subject: str, text: str):
