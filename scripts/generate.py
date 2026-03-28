@@ -138,7 +138,7 @@ async def process_file(file: Dict[str, Any], client: AsyncClient, current: int, 
                 response = await client.chat(
                     model=model,
                     messages=messages,
-                    options={"num_predict": 4096}
+                    options={"num_predict": 131072, "num_ctx": 1048576}
                 )
                 # Response in chat is structured as ['message']['content']
                 generated_content = response.get('message', {}).get('content', '')
