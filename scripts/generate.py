@@ -55,8 +55,9 @@ def send_email(subject: str, text: str):
     msg['To'] = os.getenv('EMAIL_TO') or os.getenv('EMAIL_USER')
 
     try:
-        with smtplib.SMTP(email_host, int(os.getenv('EMAIL_PORT', 587))) as server:
-            if os.getenv('EMAIL_SECURE') == 'true':
+        port = int(os.getenv('EMAIL_PORT', 587))
+        with smtplib.SMTP(email_host, port) as server:
+            if port == 587 or os.getenv('EMAIL_SECURE', '').lower() == 'true':
                 server.starttls()
             server.login(os.getenv('EMAIL_USER'), os.getenv('EMAIL_PASS'))
             server.send_message(msg)
