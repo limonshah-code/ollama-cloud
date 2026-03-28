@@ -1,0 +1,5 @@
+{
+  "name": "Content Generator",
+  "description": "Generate MDX articles from text prompts using Gemini and upload to Cloudinary.",
+  "requestFramePermissions": []
+}

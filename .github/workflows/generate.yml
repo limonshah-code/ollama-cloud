@@ -1,0 +1,48 @@
+name: Content Generation Pipeline
+
+on:
+  schedule:
+    - cron: "0 */1 * * *" 
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  generate-content:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to push changes
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Content Generation Script
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          EMAIL_HOST: smtp.gmail.com
+          EMAIL_PORT: 587
+          EMAIL_USER: limon.working@gmail.com
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_FROM: limon.working@gmail.com
+          EMAIL_TO: alifkm92@gmail.com
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: python scripts/generate.py
+
+      - name: Commit and Push Generated Content
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add generated-content/
+          git commit -m "chore: add generated content [skip ci]" || echo "No changes to commit"
+
+          git push
