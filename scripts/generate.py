@@ -22,8 +22,8 @@ EXTERNAL_API_BASE = os.getenv('EXTERNAL_API_BASE', 'https://cloud-text-manager-s
 EXTERNAL_API_URL = f"{EXTERNAL_API_BASE}/api/all-files"
 GENERATED_DIR = os.path.join(os.getcwd(), 'generated-content')
 
-BATCH_SIZE = int(os.getenv('BATCH_SIZE', 10))
-CONCURRENCY_LIMIT = int(os.getenv('CONCURRENCY_LIMIT', 3))
+BATCH_SIZE = 15
+CONCURRENCY_LIMIT = 3 # Increased slightly for performance
 REQUEST_DELAY = 1.0 # Seconds
 MAX_RETRIES = 5
 
