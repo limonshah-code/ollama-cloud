@@ -22,8 +22,8 @@ EXTERNAL_API_BASE = os.getenv('EXTERNAL_API_BASE', 'https://cloud-text-manager-s
 EXTERNAL_API_URL = f"{EXTERNAL_API_BASE}/api/all-files"
 GENERATED_DIR = os.path.join(os.getcwd(), 'generated-content')
 
-BATCH_SIZE = 15
-CONCURRENCY_LIMIT = 3 # Increased slightly for performance
+BATCH_SIZE = 2
+CONCURRENCY_LIMIT = 1
 REQUEST_DELAY = 1.0 # Seconds
 MAX_RETRIES = 5
 
@@ -38,12 +38,7 @@ def get_ollama_client():
     return AsyncClient(host="https://ollama.com", headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"})
 
 def select_model(prompt: str) -> str:
-    prompt_lower = prompt.lower()
-    if any(k in prompt_lower for k in ['code', 'python', 'javascript', 'typescript', 'rust']):
-        return "qwen3-coder:480b-cloud"
-    if any(k in prompt_lower for k in ['reason', 'think', 'solve']):
-        return "kimi-k2-thinking"
-    return "gpt-oss:120b-cloud"
+    return "minimax-m2.7:cloud"
 
 # ================= EMAIL =================
 def send_email(subject: str, text: str):

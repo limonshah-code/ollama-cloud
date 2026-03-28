@@ -89,13 +89,7 @@ def update_job(job_id: str, updates: Dict[str, Any]):
     }))
 
 def select_model(prompt: str) -> str:
-    """Select appropriate model based on prompt content."""
-    prompt_lower = prompt.lower()
-    if any(keyword in prompt_lower for keyword in ['code', 'python', 'javascript', 'typescript', 'rust', 'golang']):
-        return "qwen3-coder:480b-cloud"
-    if any(keyword in prompt_lower for keyword in ['reason', 'think', 'solve', 'complex', 'math']):
-        return "kimi-k2-thinking"
-    return "gpt-oss:120b-cloud"  # Default
+    return "minimax-m2.7:cloud"
 
 # --- Core Processing Logic ---
 
