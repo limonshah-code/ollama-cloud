@@ -11,7 +11,7 @@ import cloudinary
 import cloudinary.uploader
 import smtplib
 from email.mime.text import MIMEText
-from openai import AsyncOpenAI
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -33,13 +33,51 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "stepfun/step-3.5-flash:free")
 
 # ================= OLLAMA CLIENT =================
-def get_openrouter_client():
+def send_chat(messages: List[Dict[str, Any]], model: str) -> Dict[str, Any]:
+    """
+    Sends a chat completion request to OpenRouter using the requests library.
+    Supports reasoning and preserves reasoning_details for conversation history.
+    """
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY is not defined.")
-    return AsyncOpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
-    )
+        
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/Shah-Limon/ollama-cloud",
+        "X-Title": "Content Generation Script"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "extra_body": {"reasoning": {"enabled": True}}
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
+        
+        if response.status_code != 200:
+            error_data = response.json() if response.text else {"error": "Unknown API error"}
+            raise Exception(f"OpenRouter API error ({response.status_code}): {json.dumps(error_data)}")
+            
+        data = response.json()
+        if not data.get("choices"):
+            raise Exception("OpenRouter returned no choices in response")
+            
+        choice = data["choices"][0]
+        message = choice.get("message", {})
+        
+        return {
+            "content": message.get("content", ""),
+            "role": message.get("role", "assistant"),
+            "reasoning_details": message.get("reasoning_details")
+        }
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network error during OpenRouter request: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Failed to parse OpenRouter response: {str(e)}")
 
 def select_model(prompt: str) -> str:
     return OPENROUTER_MODEL
@@ -136,16 +174,15 @@ async def process_file(file: Dict[str, Any], client: AsyncClient, current: int, 
             try:
                 print(f"⌛ Generating content... (Attempt {attempt + 1})")
                 messages = [{'role': 'user', 'content': prompt_text}]
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    extra_body={"reasoning": {"enabled": True}}
-                )
                 
-                # Access content
-                generated_content = response.choices[0].message.content or ""
+                # Use the production-ready send_chat function
+                assistant_response = send_chat(messages, model)
+                
+                generated_content = assistant_response["content"]
                 
                 if generated_content:
+                    # In a multi-turn scenario, we would append the assistant response:
+                    # messages.append(assistant_response)
                     break
                 raise Exception("Empty response")
             except Exception as e:
@@ -193,7 +230,7 @@ async def run():
 
         print(f"Found {len(pending_files)} files.")
         
-        client = get_openrouter_client()
+        # client = get_openrouter_client() # No longer needed
         
         # Simple semaphore for concurrency control
         sem = asyncio.Semaphore(CONCURRENCY_LIMIT)

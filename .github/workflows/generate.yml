@@ -29,7 +29,8 @@ jobs:
       - name: Run Content Generation Script
         timeout-minutes: 20
         env:
-          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: "stepfun/step-3.5-flash:free"
           EMAIL_HOST: smtp.gmail.com
           EMAIL_PORT: 587
           EMAIL_USER: limon.working@gmail.com

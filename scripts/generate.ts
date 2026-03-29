@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import axios from 'axios';
-import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
@@ -21,23 +20,42 @@ if (!fs.existsSync(GENERATED_DIR)) {
 }
 
 // ================= GEMINI MULTI-KEY =================
-const apiKeys = Object.keys(process.env)
-  .filter((key) => key.startsWith('GEMINI_API_KEY'))
-  .sort()
-  .map((key) => process.env[key])
-  .filter(Boolean) as string[];
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'stepfun/step-3.5-flash:free';
 
-if (apiKeys.length === 0) {
-  throw new Error('No GEMINI_API_KEY variables found.');
+if (!OPENROUTER_API_KEY) {
+  throw new Error('OPENROUTER_API_KEY is not defined.');
 }
 
-console.log(`Loaded ${apiKeys.length} Gemini API keys.`);
+const sendChat = async (messages: any[], model: string) => {
+  const url = 'https://openrouter.ai/api/v1/chat/completions';
+  const headers = {
+    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+    'Content-Type': 'application/json',
+    'HTTP-Referer': 'https://github.com/Shah-Limon/ollama-cloud',
+    'X-Title': 'Content Generation Script TS',
+  };
 
-let keyIndex = 0;
-const getNextGemini = () => {
-  const key = apiKeys[keyIndex];
-  keyIndex = (keyIndex + 1) % apiKeys.length;
-  return new GoogleGenAI({ apiKey: key });
+  const payload = {
+    model,
+    messages,
+    extra_body: { reasoning: { enabled: true } },
+  };
+
+  try {
+    const response = await axios.post(url, payload, { headers, timeout: 120000 });
+    const choice = response.data.choices?.[0];
+    if (!choice) throw new Error('No choices in OpenRouter response');
+
+    return {
+      content: choice.message.content || '',
+      role: choice.message.role || 'assistant',
+      reasoning_details: choice.message.reasoning_details,
+    };
+  } catch (error: any) {
+    const errorData = error.response?.data;
+    throw new Error(`OpenRouter API error: ${errorData ? JSON.stringify(errorData) : error.message}`);
+  }
 };
 
 // ================= SLUG GENERATOR =================
@@ -86,27 +104,18 @@ const generateWithRetry = async (promptText: string, model: string) => {
 
   while (attempt < MAX_RETRIES) {
     try {
-      const ai = getNextGemini();
       await sleep(REQUEST_DELAY);
 
-      const result = await ai.models.generateContent({
-        model,
-        contents: promptText,
-        config: { responseMimeType: 'text/plain' },
-      });
+      const messages = [{ role: 'user', content: promptText }];
+      const response = await sendChat(messages, model);
 
-      if (!result.text) throw new Error('Empty response');
-      return result.text;
+      if (!response.content) throw new Error('Empty response');
+      return response.content;
 
     } catch (error: any) {
       attempt++;
-      console.log(`Retry ${attempt}/${MAX_RETRIES}`);
-
-      if (error?.response?.status === 429) {
-        console.log('Rate limit hit → switching key');
-      }
-
-      await sleep(1000 * attempt);
+      console.log(`Retry ${attempt}/${MAX_RETRIES} - ${error.message}`);
+      await sleep(2000 * attempt);
 
       if (attempt >= MAX_RETRIES) throw error;
     }
@@ -147,7 +156,7 @@ const processFile = async (file: any, model: string) => {
 
 // ================= PARALLEL QUEUE =================
 const runQueue = async (files: any[]) => {
-  const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+  const model = OPENROUTER_MODEL;
   const results: any[] = [];
   let index = 0;
 
@@ -183,10 +192,10 @@ const sendBatchEmail = async (success: any[], failed: any[]) => {
 
   const folderStats = getFolderStats(GENERATED_DIR);
 
-  const subject = `Content Generation Report lawn - ${dateTimeStr} - ${success.length} Success, ${failed.length} Failed`;
+  const subject = `OpenRouter Content Generation Report - ${dateTimeStr} - ${success.length} Success, ${failed.length} Failed`;
 
   const body = `
-Multi-Key Content Generation Report
+OpenRouter Content Generation Report
 ----------------------------------
 Date & Time (BDT): ${dateTimeStr}
 Total Processed: ${success.length + failed.length}
@@ -211,7 +220,7 @@ Generated content has been saved to the repository.
 
 // ================= MAIN =================
 const run = async () => {
-  console.log('🚀 Starting Multi-Key Parallel Processing...');
+  console.log('🚀 Starting OpenRouter Processing...');
 
   try {
     const response = await axios.get("https://cloud-text-manager-server.vercel.app/api/all-files?section=General");

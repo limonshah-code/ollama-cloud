@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
-from openai import AsyncOpenAI
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -57,13 +57,52 @@ queues: Dict[str, List[asyncio.Queue]] = {}
 
 # --- Helpers ---
 
-def get_openrouter_client():
+def send_chat(messages: List[Dict[str, Any]], model: str) -> Dict[str, Any]:
+    """
+    Sends a chat completion request to OpenRouter using the requests library.
+    Supports reasoning and preserves reasoning_details for conversation history.
+    """
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY is not defined in environment variables.")
-    return AsyncOpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
-    )
+        
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/Shah-Limon/ollama-cloud", # Optional headers for OpenRouter rankings
+        "X-Title": "Content Generation Server"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "extra_body": {"reasoning": {"enabled": True}}
+    }
+    
+    try:
+        # Using a longer timeout for reasoning-heavy models
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
+        
+        if response.status_code != 200:
+            error_data = response.json() if response.text else {"error": "Unknown API error"}
+            raise Exception(f"OpenRouter API error ({response.status_code}): {json.dumps(error_data)}")
+            
+        data = response.json()
+        if not data.get("choices"):
+            raise Exception("OpenRouter returned no choices in response")
+            
+        choice = data["choices"][0]
+        message = choice.get("message", {})
+        
+        return {
+            "content": message.get("content", ""),
+            "role": message.get("role", "assistant"),
+            "reasoning_details": message.get("reasoning_details")
+        }
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network error during OpenRouter request: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Failed to parse OpenRouter response: {str(e)}")
 
 async def notify_clients(file_id: str, data: Dict[str, Any]):
     if file_id in queues:
@@ -126,25 +165,22 @@ async def process_file_task(file_id: str, file_url: str, config: Dict[str, Any])
         update_job(job_id, {"progress": 30, "message": "Generating content with OpenRouter..."})
         
         model = config.get('model') or select_model(prompt_text)
-        client = get_openrouter_client()
         
         generated_content = ""
         try:
+            # Maintain a messages array for multi-turn if needed later
+            # For this task, it's a single user prompt
             messages = [{'role': 'user', 'content': prompt_text}]
-            response = await client.chat.completions.create(
-                model=model,
-                messages=messages,
-                extra_body={"reasoning": {"enabled": True}}
-            )
             
-            # Access content and reasoning_details
-            message_obj = response.choices[0].message
-            generated_content = message_obj.content or ""
+            # Use the production-ready send_chat function
+            assistant_response = send_chat(messages, model)
             
-            # If we want to log or use reasoning_details internally:
-            # OpenRouter extends the OpenAI response with reasoning_details
-            # For direct access when using the SDK, it might be in 'extra' fields if not natively supported by the SDK version
+            generated_content = assistant_response["content"]
             
+            # Logs for internal tracking
+            if assistant_response.get("reasoning_details"):
+                print(f"[{job_id}] Model finished reasoning. Steps captured.")
+
             if not generated_content:
                 raise Exception("OpenRouter returned empty content")
         except Exception as e:
