@@ -150,7 +150,7 @@ def generate_safe_filename(original_filename: str) -> str:
     return f"{safe}.mdx"
 
 # ================= FILE PROCESS =================
-async def process_file(file: Dict[str, Any], client: AsyncClient, current: int, total: int):
+async def process_file(file: Dict[str, Any], current: int, total: int):
     filename = file.get('originalFilename', 'unknown')
     file_id = file.get('_id') or file.get('id')
     start_time = time.time()
@@ -238,7 +238,7 @@ async def run():
         
         async def sem_worker(file, index):
             async with sem:
-                return await process_file(file, client, index + 1, total_files)
+                return await process_file(file, index + 1, total_files)
         
         tasks = [sem_worker(f, i) for i, f in enumerate(pending_files)]
         results = await asyncio.gather(*tasks)
