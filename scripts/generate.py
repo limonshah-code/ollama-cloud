@@ -11,7 +11,7 @@ import cloudinary
 import cloudinary.uploader
 import smtplib
 from email.mime.text import MIMEText
-from ollama import AsyncClient
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -29,19 +29,20 @@ MAX_RETRIES = 5
 
 os.makedirs(GENERATED_DIR, exist_ok=True)
 
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "stepfun/step-3.5-flash:free")
 
 # ================= OLLAMA CLIENT =================
-def get_ollama_client():
-    if not OLLAMA_API_KEY:
-        raise ValueError("OLLAMA_API_KEY is not defined.")
-    return AsyncClient(
-        host="https://ollama.com", 
-        headers={'Authorization': 'Bearer ' + OLLAMA_API_KEY}
+def get_openrouter_client():
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY is not defined.")
+    return AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
     )
 
 def select_model(prompt: str) -> str:
-    return "gemini-3-flash-preview:cloud"
+    return OPENROUTER_MODEL
 
 # ================= EMAIL =================
 def send_email(subject: str, text: str):
@@ -76,10 +77,10 @@ async def send_batch_email(success: List[Dict], failed: List[Dict]):
     date_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     stats = get_folder_stats(GENERATED_DIR)
     
-    subject = f"Ollama Cloud Generation Report - {date_time_str} - {len(success)} Success, {len(failed)} Failed"
+    subject = f"OpenRouter Generation Report - {date_time_str} - {len(success)} Success, {len(failed)} Failed"
     
     body = f"""
-Ollama Cloud Content Generation Report
+OpenRouter Content Generation Report
 --------------------------------------
 Date & Time: {date_time_str}
 Total Processed: {len(success) + len(failed)}
@@ -134,15 +135,16 @@ async def process_file(file: Dict[str, Any], client: AsyncClient, current: int, 
         while attempt < MAX_RETRIES:
             try:
                 print(f"⌛ Generating content... (Attempt {attempt + 1})")
-                # Shift from generate to chat for doc parity
                 messages = [{'role': 'user', 'content': prompt_text}]
-                response = await client.chat(
+                response = await client.chat.completions.create(
                     model=model,
                     messages=messages,
-                    options={"num_predict": 65536, "num_ctx": 1048576}
+                    extra_body={"reasoning": {"enabled": True}}
                 )
-                # Response in chat is structured as ['message']['content']
-                generated_content = response.get('message', {}).get('content', '')
+                
+                # Access content
+                generated_content = response.choices[0].message.content or ""
+                
                 if generated_content:
                     break
                 raise Exception("Empty response")
@@ -177,7 +179,7 @@ async def process_file(file: Dict[str, Any], client: AsyncClient, current: int, 
 
 # ================= MAIN =================
 async def run():
-    print('🚀 Starting Ollama Cloud Batch Processing...')
+    print('🚀 Starting OpenRouter Batch Processing...')
     
     try:
         async with httpx.AsyncClient(timeout=60.0) as http_client:
@@ -191,7 +193,7 @@ async def run():
 
         print(f"Found {len(pending_files)} files.")
         
-        client = get_ollama_client()
+        client = get_openrouter_client()
         
         # Simple semaphore for concurrency control
         sem = asyncio.Semaphore(CONCURRENCY_LIMIT)

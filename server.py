@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
-from ollama import AsyncClient
+from openai import AsyncOpenAI
 
 # Load environment variables
 load_dotenv()
@@ -36,7 +36,8 @@ app.add_middleware(
 PORT = int(os.getenv("PORT", 3000))
 EXTERNAL_API_BASE = os.getenv("EXTERNAL_API_BASE", "https://cloud-text-manager-server.vercel.app")
 EXTERNAL_API_URL = f"{EXTERNAL_API_BASE}/api/files"
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "stepfun/step-3.5-flash:free")
 
 # In-memory Job Store
 class Job(BaseModel):
@@ -56,12 +57,12 @@ queues: Dict[str, List[asyncio.Queue]] = {}
 
 # --- Helpers ---
 
-def get_ollama_client():
-    if not OLLAMA_API_KEY:
-        raise ValueError("OLLAMA_API_KEY is not defined in environment variables.")
-    return AsyncClient(
-        host="https://ollama.com", 
-        headers={'Authorization': 'Bearer ' + OLLAMA_API_KEY}
+def get_openrouter_client():
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY is not defined in environment variables.")
+    return AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
     )
 
 async def notify_clients(file_id: str, data: Dict[str, Any]):
@@ -90,7 +91,7 @@ def update_job(job_id: str, updates: Dict[str, Any]):
     }))
 
 def select_model(prompt: str) -> str:
-    return "gemini-3-flash-preview:cloud"
+    return OPENROUTER_MODEL
 
 # --- Core Processing Logic ---
 
@@ -121,27 +122,33 @@ async def process_file_task(file_id: str, file_url: str, config: Dict[str, Any])
             except Exception as e:
                 raise Exception(f"Failed to fetch prompt file: {str(e)}")
 
-        # 2. Generate content with Ollama Cloud
-        update_job(job_id, {"progress": 30, "message": "Generating content with Ollama Cloud..."})
+        # 2. Generate content with OpenRouter
+        update_job(job_id, {"progress": 30, "message": "Generating content with OpenRouter..."})
         
         model = config.get('model') or select_model(prompt_text)
-        client = get_ollama_client()
+        client = get_openrouter_client()
         
         generated_content = ""
         try:
-            # Shift from generate to chat for doc parity
             messages = [{'role': 'user', 'content': prompt_text}]
-            response = await client.chat(
+            response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
-                options={"num_predict": 65536, "num_ctx": 1048576}
+                extra_body={"reasoning": {"enabled": True}}
             )
-            # Response in chat is structured as ['message']['content']
-            generated_content = response.get('message', {}).get('content', '')
+            
+            # Access content and reasoning_details
+            message_obj = response.choices[0].message
+            generated_content = message_obj.content or ""
+            
+            # If we want to log or use reasoning_details internally:
+            # OpenRouter extends the OpenAI response with reasoning_details
+            # For direct access when using the SDK, it might be in 'extra' fields if not natively supported by the SDK version
+            
             if not generated_content:
-                raise Exception("Ollama Cloud returned empty content")
+                raise Exception("OpenRouter returned empty content")
         except Exception as e:
-            raise Exception(f"Ollama Cloud chat failed: {str(e)}")
+            raise Exception(f"OpenRouter chat failed: {str(e)}")
 
         # 3. Upload to Cloudinary
         update_job(job_id, {"progress": 70, "message": "Uploading to Cloudinary..."})
@@ -199,7 +206,7 @@ async def process_file_task(file_id: str, file_url: str, config: Dict[str, Any])
 @app.get("/")
 async def root():
     return {
-        "message": "Content Generation Server (Ollama Cloud) is Running",
+        "message": "Content Generation Server (OpenRouter) is Running",
         "version": "1.0.0",
         "endpoints": {
             "health": "/api/health",
