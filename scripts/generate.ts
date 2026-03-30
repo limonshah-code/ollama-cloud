@@ -43,7 +43,7 @@ const sendChat = async (messages: any[], model: string) => {
   };
 
   try {
-    const response = await axios.post(url, payload, { headers, timeout: 120000 });
+    const response = await axios.post(url, payload, { headers });
     const choice = response.data.choices?.[0];
     if (!choice) throw new Error('No choices in OpenRouter response');
 

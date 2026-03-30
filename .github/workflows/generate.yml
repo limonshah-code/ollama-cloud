@@ -27,7 +27,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run Content Generation Script
-        timeout-minutes: 20
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: "stepfun/step-3.5-flash:free"

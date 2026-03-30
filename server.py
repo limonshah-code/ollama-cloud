@@ -80,8 +80,7 @@ def send_chat(messages: List[Dict[str, Any]], model: str) -> Dict[str, Any]:
     }
     
     try:
-        # Using a longer timeout for reasoning-heavy models
-        response = requests.post(url, headers=headers, json=payload, timeout=120)
+        response = requests.post(url, headers=headers, json=payload)
         
         if response.status_code != 200:
             error_data = response.json() if response.text else {"error": "Unknown API error"}
