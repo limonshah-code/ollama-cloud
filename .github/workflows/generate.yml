@@ -2,20 +2,20 @@ name: Content Generation Pipeline
 
 on:
   schedule:
-    - cron: "0 */2 * * *" 
+    - cron: "5 */2 * * *" 
   workflow_dispatch: # Allows manual trigger
 
 jobs:
   generate-content:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: write # Required to push changes
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Get full history to prevent issues with git push
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -49,4 +49,4 @@ jobs:
           git add generated-content/
           git commit -m "chore: add generated content [skip ci]" || echo "No changes to commit"
 
-          git push
+          git push origin main
