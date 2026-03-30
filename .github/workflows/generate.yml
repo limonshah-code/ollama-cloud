@@ -2,7 +2,7 @@ name: Content Generation Pipeline
 
 on:
   schedule:
-    - cron: "5 */2 * * *" 
+    - cron: "0 */1 * * *"   
   workflow_dispatch: # Allows manual trigger
 
 jobs:
